@@ -1,7 +1,5 @@
 import os
-import argparse
 import wave
-import audioop
 import numpy as np
 import scipy
 import ffmpeg
