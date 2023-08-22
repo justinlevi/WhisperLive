@@ -1,7 +1,7 @@
 import os
 import argparse
 import wave
-
+import audioop
 import numpy as np
 import scipy
 import ffmpeg
@@ -11,7 +11,6 @@ import textwrap
 import json
 import websocket
 import uuid
-
 
 def resample(file: str, sr: int = 16000):
     """
@@ -231,6 +230,7 @@ class Client:
         try:
             for _ in range(0, int(self.RATE / self.CHUNK * self.RECORD_SECONDS)):
                 if not Client.RECORDING: break
+                self.exception_on_overflow=False
                 data = self.stream.read(self.CHUNK)
                 self.frames += data
 
@@ -261,6 +261,28 @@ class Client:
             # combine all the audio files
             self.write_output_recording(n_audio_file, out_file)
     
+
+    def handle_stream(self, data: bytes, out_file="output_recording.wav"):
+        n_audio_file = 0
+        # create dir for saving audio chunks
+        if not os.path.exists("chunks"):
+            os.makedirs("chunks", exist_ok=True)
+        try:
+            self.frames += data
+            audio_array = Client.bytes_to_float_array(data)                    
+            self.send_packet_to_server(audio_array.tobytes())
+
+        except KeyboardInterrupt:
+            if len(self.frames):
+                self.write_audio_frames_to_file(
+                    self.frames[:], f"chunks/{n_audio_file}.wav")
+                n_audio_file += 1
+            self.close_websocket()
+
+            # combine all the audio files
+            self.write_output_recording(n_audio_file, out_file)
+
+
     def write_output_recording(self, n_audio_file, out_file):
         input_files = [f"chunks/{i}.wav" for i in range(n_audio_file) if os.path.exists(f"chunks/{i}.wav")]
         wf = wave.open(out_file, 'wb')
