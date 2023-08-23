@@ -1,18 +1,14 @@
-import websockets
-import pickle, struct, time, pyaudio
+import time
 import threading
-import os, json
-import base64
-import wave
+import json
 import textwrap
-
+import audioop
 import logging
-# logging.basicConfig(level = logging.INFO)
+logging.basicConfig(level = logging.INFO)
 
-from collections import deque
-from dataclasses import dataclass
 from websockets.sync.server import serve
 
+from whisper_live.client import Client
 import torch
 import numpy as np
 import time
@@ -62,6 +58,19 @@ class TranscriptionServer:
         options = websocket.recv()
         options = json.loads(options)
 
+        # Twilio events
+        if options.get("event") == "connected": 
+            packet = websocket.recv()
+            packet = json.loads(packet)
+            # Setup default options object
+            options = {
+            'uid': packet["streamSid"],
+            'multilingual': False,
+            'language': "en",
+            'task': "transcribe"
+        }
+
+
         if len(self.clients) >= self.max_clients:
             logging.warning("Client Queue Full. Asking client to wait ...")
             wait_time = self.get_wait_time()
@@ -89,7 +98,19 @@ class TranscriptionServer:
         while True:
             try:
                 frame_data = websocket.recv()
-                frame_np = np.frombuffer(frame_data, dtype=np.float32)
+                try:
+                    packet = json.loads(frame_data)
+                    if packet.get("event") == "media":
+                        data = bytes.fromhex(packet["media"]["payload"])
+                        data = audioop.ulaw2lin(data, 2)
+                        data = audioop.ratecv(data, 2, 1, 8000, 16000, None)[0]
+
+                        audio_array = Client.bytes_to_float_array(data)  
+                        frame_np = np.frombuffer(audio_array.tobytes(), dtype=np.float32)
+
+                except Exception as e:
+                    frame_np = np.frombuffer(frame_data, dtype=np.float32)
+
 
                 try:
                     speech_prob = self.vad_model(torch.from_numpy(frame_np.copy()), self.RATE).item()
@@ -286,12 +307,17 @@ class ServeClient:
                         segments = segments + [last_segment]
                     
                     try:
-                        self.websocket.send(
-                            json.dumps({
+                        data = json.dumps({
                                 "uid": self.client_uid,
                                 "segments": segments
                             })
-                        )
+                        
+                        # # write to disk asynchronously
+                        # with open(f"{time.time()}_transcript.json", "a") as f:
+                        #     f.write(data + "\n")
+
+                        self.websocket.send(data)                   
+
                     except Exception as e:
                         logging.error(f"[ERROR]: {e}")
                 else:
@@ -402,5 +428,5 @@ class ServeClient:
     
     def cleanup(self):
         logging.info("Cleaning up.")
-        self.exit = True
-        self.transcriber.destroy()
+        # self.exit = True
+        # self.transcriber.destroy()

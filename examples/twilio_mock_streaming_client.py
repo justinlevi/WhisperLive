@@ -4,6 +4,7 @@ import ffmpeg
 import json
 
 SOCKET_SERVER_URI = "ws://127.0.0.1:8080/stream"
+# SOCKET_SERVER_URI = "ws://127.0.0.1:9090"
 
 print("Starting ffmpeg command")
 # Convert the audio file to 8kHz and perform mu-law encoding

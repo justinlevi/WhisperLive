@@ -1,6 +1,6 @@
 from whisper_live.client import Client
 # client = TranscriptionClient("127.0.0.1", "9090", is_multilingual=False, lang="en", translate=False)
-# client(streaming=True)
+# client()
 
 from fastapi import FastAPI, WebSocket, Depends
 import audioop
